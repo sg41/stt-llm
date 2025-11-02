@@ -12,17 +12,27 @@ DEVICE_INDEX = 0  # Индекс микрофона (у вас — 0)
 
 # === Инициализация ===
 print("Загрузка Whisper...")
+# Явно указываем, что НЕ хотим временные метки
 transcriber = pipeline(
     "automatic-speech-recognition",
     model="openai/whisper-small",
     device=-1,  # CPU
-    return_timestamps=False,
-    generate_kwargs={"language": "russian", "task": "transcribe"}
+    return_timestamps=False,  # ← важно: False, не "None"
+    chunk_length_s=30,        # опционально: ускоряет обработку
+    stride_length_s=(4, 2),   # опционально: уменьшает артефакты на границах
+    generate_kwargs={
+        "language": "russian",
+        "task": "transcribe",
+        "return_token_timestamps": False,  # ← явно запрещаем
+    }
 )
 
 r = sr.Recognizer()
-r.energy_threshold = 400
-r.dynamic_energy_threshold = True
+r.energy_threshold = 6000
+r.dynamic_energy_threshold = False
+r.pause_threshold = 0.8         # секунд тишины = конец фразы (по умолчанию 0.8)
+r.phrase_threshold = 0.3        # мин. длительность звука, чтобы считать его речью
+r.non_speaking_duration = 0.5   # сколько тишины до и после фразы сохранять
 
 headers = {
     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -69,8 +79,17 @@ def query_openrouter(prompt):
         print(f"❌ Сетевая ошибка: {e}")
         return None
 
+def measure_noise():
+    r = sr.Recognizer()
+    with sr.Microphone(device_index=0) as source:
+        print("Измеряю фоновый шум... (5 сек, молчите)")
+        r.adjust_for_ambient_noise(source, duration=5)
+        print(f"Рекомендуемый energy_threshold: {r.energy_threshold:.1f}")
+        
 # === Основной цикл ===
 def main():
+    # measure_noise()
+    # exit()
     print("\n🎙️  Голосовой ассистент готов. Говорите — запись остановится автоматически.")
     print("   Нажмите Ctrl+C для выхода.\n")
 
